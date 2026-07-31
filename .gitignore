@@ -1,0 +1,16 @@
+node_modules/
+.env
+.env.local
+dist/
+.next/
+*.log
+
+# Serwist / PWA generated assets
+client/public/sw.js
+client/public/sw.js.map
+
+# macOS
+.DS_Store
+
+# Claude Code local (machine-specific) settings
+.claude/settings.local.json

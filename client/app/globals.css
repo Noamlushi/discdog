@@ -1,0 +1,245 @@
+@import "tailwindcss";
+
+/* §8.1 — class-based dark mode (manual toggle via ThemeToggle / ThemeContext).
+   `class="dark"` on <html> is the canonical "arena" design (the Claude Design
+   mockups); its absence is a bright, high-contrast "outdoor" light variant that
+   shares the same electric-lime identity. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------------------------------------------------------------------------
+   Design tokens (CSS-first, replaces tailwind.config.ts in Tailwind v4).
+
+   The DARK block below (`html.dark`) is the canonical design system — it maps
+   1:1 to the Claude Design "J'GAMES" project (arena base + one electric lime).
+   The `@theme` defaults are the LIGHT (outdoor) variant of those same tokens.
+   Every utility resolves `var(--color-*)` at runtime, so flipping the variables
+   under `.dark` re-skins the whole app with no per-component changes.
+--------------------------------------------------------------------------- */
+@theme {
+  /* Semantic surfaces — page → card → inset. */
+  --color-arena: #eef2ec;      /* page background */
+  --color-surface: #ffffff;    /* card / panel */
+  --color-surface-2: #f0f4ec;  /* inset / nested row */
+  --color-elevated: #ffffff;   /* raised card */
+  --color-line: rgba(12, 22, 14, 0.1); /* hairline borders */
+
+  /* Text. */
+  --color-ink: #0a0e0c;        /* primary text */
+  --color-muted: #5c675e;      /* secondary text */
+
+  /* Accent — electric lime. `lime` is the shared fill (dark ink on top);
+     `accent` is the text/ring-capable accent that flips to a deep green in
+     light so it stays legible in direct sunlight (promoted to lime in dark). */
+  --color-lime: #a3e635;       /* accent fill (both themes) */
+  --color-lime-bright: #c6f94f;
+  --color-lime-ink: #0a0e0c;   /* ink on the lime fill */
+  --color-accent: #3f6212;     /* accent text/ring (light: deep green) */
+  --color-accent-fg: #ffffff;  /* ink on the accent fill */
+
+  /* State & rank. */
+  --color-danger: #dc2626;     /* miss / destructive (light) */
+  --color-danger-fg: #ffffff;
+  --color-gold: #b7791f;       /* rank gold (light) */
+
+  /* §8.1 — legacy aliases (old cream/sunset vocabulary) kept pointing at the
+     new tokens so any not-yet-restyled surface still resolves sensibly. */
+  --color-live: #a3e635;
+  --color-live-fg: #0a0e0c;
+  --color-nav: #3f6212;
+  --color-nav-fg: #ffffff;
+  --color-surface-light: #eef2ec;
+  --color-surface-dark: #0a0e0c;
+  --color-sunset: #3f6212;
+  --color-coral: #365314;
+  --color-tangerine: #4d7c0f;
+  --color-sunbeam: #4d7c0f;
+  --color-cream: #eef2ec;
+  --color-cream-2: #f0f4ec;
+  --color-cocoa: #0a0e0c;
+
+  /* §8.1 rounded corners. */
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 2rem;
+
+  /* §8.1 soft shadow → `shadow-soft`; lime glow under primaries → `shadow-glow`. */
+  --shadow-soft: 0 10px 34px -14px rgba(20, 40, 20, 0.28);
+  --shadow-glow: 0 0 34px -10px rgba(163, 230, 53, 0.5);
+
+  /* §8.2 fat-finger tap target → `p-tap`, `h-tap`, etc. */
+  --spacing-tap: 4rem;
+
+  /* Fonts (wired from next/font in app/layout.tsx). Heebo → `font-sans`;
+     Space Grotesk tabular numerals for scores/timers → `font-score`. */
+  --font-sans: var(--font-heebo), ui-sans-serif, system-ui, sans-serif;
+  --font-score: var(--font-space-grotesk), ui-monospace, monospace;
+}
+
+/* DARK (arena) — the canonical design system, matching the mockups exactly. */
+html.dark {
+  --color-arena: #0a0e0c;
+  --color-surface: #141a16;
+  --color-surface-2: #1a221d;
+  --color-elevated: #222a24;
+  --color-line: rgba(255, 255, 255, 0.08);
+
+  --color-ink: #eaf0ea;
+  --color-muted: #8b968e;
+
+  --color-accent: #a3e635;       /* accent text promoted to lime */
+  --color-accent-fg: #0a0e0c;
+  --color-danger: #ff4d4d;
+  --color-gold: #f5a623;
+
+  --shadow-glow: 0 0 40px -8px rgba(163, 230, 53, 0.45);
+
+  /* legacy aliases, dark values */
+  --color-nav: #a3e635;
+  --color-nav-fg: #0a0e0c;
+  --color-sunset: #a3e635;
+  --color-coral: #84cc16;
+  --color-tangerine: #a3e635;
+  --color-sunbeam: #c6f94f;
+  --color-cream: #0a0e0c;
+  --color-cream-2: #0e1310;
+  --color-cocoa: #eaf0ea;
+}
+
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  @apply bg-arena text-ink antialiased;
+}
+
+/* Tabular numerals wherever the score font is used. */
+.font-score {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------------
+   Reusable component classes (mirror the Claude Design components so every
+   screen speaks one visual language). Token-driven → they flip with the theme.
+--------------------------------------------------------------------------- */
+@layer components {
+  /* Cards / panels. */
+  .ds-card {
+    @apply rounded-3xl border border-line bg-surface;
+  }
+  .ds-inset {
+    @apply rounded-2xl border border-line bg-surface-2;
+  }
+
+  /* Overline label — uppercase, tracked, muted (§ typography). */
+  .ds-label {
+    @apply text-xs font-extrabold uppercase tracking-[0.14em] text-muted;
+  }
+
+  /* Status pills. */
+  .ds-pill {
+    @apply inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[13px] font-extrabold;
+  }
+  .ds-pill-live {
+    @apply text-danger;
+    background: color-mix(in srgb, var(--color-danger) 14%, transparent);
+  }
+  .ds-pill-ondeck {
+    @apply text-accent;
+    background: color-mix(in srgb, var(--color-lime) 14%, transparent);
+  }
+  .ds-pill-done {
+    @apply bg-black/5 text-muted dark:bg-white/[0.06];
+  }
+  /* Live pulse dot for the "on air" pill. */
+  .ds-dot {
+    @apply h-2 w-2 rounded-full bg-danger;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-danger) 20%, transparent);
+  }
+
+  /* Meta / discipline tag. */
+  .ds-tag {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 px-3 py-1.5 text-xs font-bold text-ink/80;
+  }
+
+  /* Buttons. */
+  .ds-btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-extrabold transition;
+  }
+  .ds-btn-primary {
+    @apply bg-lime text-lime-ink shadow-glow hover:brightness-105;
+  }
+  .ds-btn-ghost {
+    @apply border border-line bg-surface-2 text-ink hover:bg-elevated;
+  }
+  .ds-btn-danger {
+    @apply border text-danger;
+    background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+    border-color: color-mix(in srgb, var(--color-danger) 40%, transparent);
+  }
+
+  /* Circular rank medal. */
+  .ds-rank {
+    @apply grid h-7 w-7 place-items-center rounded-full text-[13px] font-black;
+  }
+  .ds-rank-1 {
+    @apply text-lime-ink;
+    background: var(--color-gold);
+  }
+}
+
+/* Live-score "pop" — the running score scales up briefly each time it
+   changes, so a goal/catch reads as a beat of motion on the big screen. */
+@keyframes score-pop {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.14);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-score-pop {
+  animation: score-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Slow drift for the decorative paw motif behind the hero card. */
+@keyframes paw-drift {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-12deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(-6deg);
+  }
+}
+
+.animate-paw-drift {
+  animation: paw-drift 6s ease-in-out infinite;
+}
+
+/* Pulsing "live" dot. */
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.animate-live-pulse {
+  animation: live-pulse 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-score-pop,
+  .animate-paw-drift,
+  .animate-live-pulse {
+    animation: none;
+  }
+}

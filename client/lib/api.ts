@@ -134,6 +134,20 @@ export const postScoringAction = (
     body: JSON.stringify({ matchId, timestamp, actionData }),
   });
 
+/**
+ * Rewrite the last logged action in place — used by Distance/Ice Drop, where
+ * the zone is logged the instant the dog catches and the +0.5 bonuses are added
+ * to that same throw a moment later.
+ */
+export const amendScoringAction = (
+  matchId: string,
+  actionData: Record<string, unknown>
+) =>
+  request<ScoreResponse>("/scoring/amend", {
+    method: "POST",
+    body: JSON.stringify({ matchId, actionData }),
+  });
+
 export const undoScoringAction = (matchId: string) =>
   request<ScoreResponse>("/scoring/undo", {
     method: "POST",

@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Dog, MapPin, Play, User } from "lucide-react";
+import { Dog, MapPin, Play, RefreshCw, User } from "lucide-react";
 import { useJudgeSession } from "../../context/JudgeSessionContext";
 import { useJudgeScope } from "../../context/JudgeScopeContext";
+import { useSocket } from "../../context/SocketContext";
 import { getHeats, setHeatStatus } from "../../lib/api";
 import { disciplineOf } from "../../lib/disciplines";
+import { CLIENT_EVENTS, SERVER_EVENTS } from "../../lib/socketEvents";
 import { refName, type HeatDto } from "../../lib/types";
 
 // §3.3 On-Deck (scoped) — the competition is fixed by the route (JudgeScope), so
@@ -16,29 +18,52 @@ export function OnDeckView() {
   const router = useRouter();
   const { basePath, event } = useJudgeScope();
   const { eventId, pitch, setPitch, startRun } = useJudgeSession();
+  const { socket } = useSocket();
 
   const [onDeck, setOnDeck] = useState<HeatDto | null>(null);
+  const [upcoming, setUpcoming] = useState<HeatDto[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load the next heat whenever the (locked) event or chosen pitch changes.
-  useEffect(() => {
+  // The next competitor is simply the first non-completed heat in the pitch's
+  // run order (heats come back sorted by scheduled time).
+  const load = useCallback(() => {
     if (!eventId || pitch == null) {
       setOnDeck(null);
+      setUpcoming([]);
       return;
     }
     setLoading(true);
     getHeats({ eventId, pitch })
       .then((heats) => {
-        const next = heats.find(
+        const queue = heats.filter(
           (h) => !h.isFinalsPlaceholder && h.status !== "Completed"
         );
-        setOnDeck(next ?? null);
+        setOnDeck(queue[0] ?? null);
+        setUpcoming(queue.slice(1, 4));
         setError(null);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [eventId, pitch]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // The run order can change under the judge's feet — an organizer reorders the
+  // schedule, or another pitch's judge finishes a heat — so re-pull the queue on
+  // those broadcasts instead of showing whoever was next when the screen opened.
+  useEffect(() => {
+    if (!socket || !eventId) return;
+    socket.emit(CLIENT_EVENTS.JOIN_EVENT_ROOM, eventId);
+    socket.on(SERVER_EVENTS.SCHEDULE_UPDATED, load);
+    socket.on(SERVER_EVENTS.MATCH_STATUS_CHANGED, load);
+    return () => {
+      socket.off(SERVER_EVENTS.SCHEDULE_UPDATED, load);
+      socket.off(SERVER_EVENTS.MATCH_STATUS_CHANGED, load);
+    };
+  }, [socket, eventId, load]);
 
   const handleStart = async () => {
     if (!onDeck) return;
@@ -53,13 +78,23 @@ export function OnDeckView() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-black tracking-tight">הבא בתור</h1>
-        <p className="mt-1 text-muted">
-          {event.activePitches > 1
-            ? "בחר מגרש כדי לראות מי הבא בתור, ואז לחץ ״התחל שיפוט״."
-            : "מי הבא בתור — לחץ ״התחל שיפוט״ כדי להתחיל."}
-        </p>
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-black tracking-tight">הבא בתור</h1>
+          <p className="mt-1 text-muted">
+            {event.activePitches > 1
+              ? "בחר מגרש כדי לראות מי הבא בתור, ואז לחץ ״התחל שיפוט״."
+              : "מי הבא בתור — לחץ ״התחל שיפוט״ כדי להתחיל."}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={load}
+          aria-label="רענן"
+          className="shrink-0 rounded-xl border border-line p-2 text-muted transition active:scale-95"
+        >
+          <RefreshCw className={`h-5 w-5 ${loading ? "animate-spin" : ""}`} />
+        </button>
       </header>
 
       {error && (
@@ -105,6 +140,35 @@ export function OnDeckView() {
               אין מקצים ממתינים במגרש {pitch}.
             </p>
           )}
+        </section>
+      )}
+
+      {/* The tail of the queue — so the judge can see the current run order and
+          spot immediately when an organizer has reshuffled it. */}
+      {upcoming.length > 0 && (
+        <section>
+          <h2 className="ds-label mb-2">אחריו</h2>
+          <ol className="space-y-2">
+            {upcoming.map((heat, i) => (
+              <li
+                key={heat._id}
+                className="flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-2.5"
+              >
+                <span className="w-5 shrink-0 text-center font-score text-sm text-muted">
+                  {i + 2}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm">
+                  <span className="font-bold">
+                    {refName(heat.team?.playerId) ?? "—"}
+                  </span>
+                  <span className="text-muted">
+                    {" · "}
+                    {refName(heat.team?.dogId) ?? "—"}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ol>
         </section>
       )}
     </div>

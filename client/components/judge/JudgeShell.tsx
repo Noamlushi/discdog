@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Flag, Hand, ListChecks } from "lucide-react";
+import { Flag, Hand, ListChecks, Undo2 } from "lucide-react";
 import { ThemeToggle } from "../ThemeToggle";
 import { useJudgeScope } from "../../context/JudgeScopeContext";
 
@@ -10,10 +10,14 @@ import { useJudgeScope } from "../../context/JudgeScopeContext";
 // to one competition/league round via JudgeScope's `basePath` (no picker). The
 // competition name sits in the top strip so the judge always knows the context.
 export function JudgeShell({ children }: { children: React.ReactNode }) {
-  const { basePath, event } = useJudgeScope();
+  const { basePath, event, up } = useJudgeScope();
   const pathname = usePathname();
 
+  // "Up" first: from a league round it climbs to the league, from a standalone
+  // competition to that competition's portal. Without it the judging screens
+  // had no way out at all.
   const nav = [
+    ...(up ? [{ href: up.href, label: up.label, icon: Undo2 }] : []),
     { href: basePath, label: "הבא בתור", icon: Flag },
     { href: `${basePath}/scoring`, label: "ניקוד", icon: Hand },
     { href: `${basePath}/log`, label: "יומן", icon: ListChecks },

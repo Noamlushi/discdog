@@ -134,10 +134,35 @@ export const postScoringAction = (
     body: JSON.stringify({ matchId, timestamp, actionData }),
   });
 
+/**
+ * Rewrite the last logged action in place — used by Distance/Ice Drop, where
+ * the zone is logged the instant the dog catches and the +0.5 bonuses are added
+ * to that same throw a moment later.
+ */
+export const amendScoringAction = (
+  matchId: string,
+  actionData: Record<string, unknown>
+) =>
+  request<ScoreResponse>("/scoring/amend", {
+    method: "POST",
+    body: JSON.stringify({ matchId, actionData }),
+  });
+
 export const undoScoringAction = (matchId: string) =>
   request<ScoreResponse>("/scoring/undo", {
     method: "POST",
     body: JSON.stringify({ matchId }),
+  });
+
+/**
+ * Manual run order (§3.2) — reassigns the pitch's existing times to the heats
+ * in the given order. `heatIds` must be one pitch's heats, top to bottom.
+ * Manager only; the server broadcasts `schedule_updated` to the event room.
+ */
+export const reorderHeats = (eventId: string, heatIds: string[]) =>
+  request<{ reordered: string[] }>("/schedule/reorder", {
+    method: "PATCH",
+    body: JSON.stringify({ eventId, heatIds }),
   });
 
 /** Heat review — score, catches/misses breakdown, and the throw timeline. */
@@ -220,6 +245,8 @@ export const getLeagueBySlug = (slug: string) =>
 
 export const createLeague = (input: {
   name: string;
+  /** Chosen URL for the league — the root of its round tree. */
+  slug?: string;
   dates: { date: string; roundsCount: number; label?: string }[];
   scoring: { mode: "bestOf" | "sum"; bestN: number };
   experienceLevels?: string[];
@@ -234,6 +261,8 @@ export const createLeague = (input: {
 
 export const updateLeague = (id: string, patch: Partial<{
   name: string;
+  /** Renaming this moves the whole round tree — old /l/:slug links stop working. */
+  slug: string;
   dates: { date: string; roundsCount: number; label?: string }[];
   scoring: { mode: "bestOf" | "sum"; bestN: number };
   experienceLevels: string[];
@@ -286,6 +315,32 @@ export const generateLeagueRound = (
 
 export const getLeagueStandings = (id: string) =>
   request<LeagueStandingsResponse>(`/leagues/${id}/standings`);
+
+/**
+ * Download the league workbook (manager only): a summary sheet with the
+ * standings across all rounds plus one sheet per round with every throw and its
+ * score. Fetched as a blob because a plain <a href> can't carry the bearer
+ * token; the file itself is built server-side (a CSV can't hold sheets).
+ */
+export async function downloadLeagueExport(
+  id: string,
+  leagueName: string
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/leagues/${id}/export`, {
+    cache: "no-store",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `Request failed (${res.status})`);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${leagueName} — תוצאות ליגה.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export const deleteLeague = (id: string) =>
   request<{

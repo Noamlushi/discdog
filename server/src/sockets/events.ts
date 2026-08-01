@@ -5,6 +5,8 @@ export const SERVER_EVENTS = {
   LIVE_SCORE_UPDATED: "live_score_updated",
   MATCH_STATUS_CHANGED: "match_status_changed",
   FREESTYLE_SYNC: "freestyle_sync",
+  // The run order changed (manual reorder) — listeners should re-pull the heats.
+  SCHEDULE_UPDATED: "schedule_updated",
 } as const;
 
 // Client → Server

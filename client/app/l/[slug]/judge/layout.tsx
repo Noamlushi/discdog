@@ -58,7 +58,11 @@ export default function LeagueJudgeLayout({
         </div>
       ) : (
         <JudgeSessionProvider>
-          <JudgeScopeProvider basePath={`/l/${slug}/judge`} event={round}>
+          <JudgeScopeProvider
+            basePath={`/l/${slug}/judge`}
+            event={round}
+            up={{ href: `/l/${slug}`, label: "הליגה" }}
+          >
             <JudgeShell>{children}</JudgeShell>
           </JudgeScopeProvider>
         </JudgeSessionProvider>

@@ -5,6 +5,7 @@ import { requireRole } from "../middleware/requireRole";
 import { Discipline, UserRole } from "../types";
 import {
   appendAction,
+  amendLastAction,
   undoLastAction,
   getHeatStats,
   completeFreestyleIfAllDone,
@@ -101,6 +102,45 @@ router.post(
       }
 
       res.status(201).json({
+        score: wireScore(rc.result.value),
+        display: rc.result.display,
+        breakdown: rc.result.breakdown ?? null,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// POST /api/scoring/amend — rewrite the last action in place (Judge) §5.1.
+// Distance/Ice Drop logs the zone on the catch and adds the +0.5 bonuses to
+// that same throw a moment later; that is an amendment, not a new throw.
+router.post(
+  "/amend",
+  authenticate,
+  requireRole(UserRole.Admin, UserRole.Organizer, UserRole.Judge),
+  async (req, res, next) => {
+    try {
+      const { matchId, actionData } = req.body ?? {};
+      if (
+        !matchId ||
+        typeof actionData !== "object" ||
+        actionData === null
+      ) {
+        return res
+          .status(400)
+          .json({ error: "matchId and actionData are required" });
+      }
+
+      const rc = await amendLastAction(matchId, actionData);
+      if (!rc) {
+        return res
+          .status(404)
+          .json({ error: "Unknown match, or no action to amend" });
+      }
+
+      broadcastScore(req, rc);
+      res.json({
         score: wireScore(rc.result.value),
         display: rc.result.display,
         breakdown: rc.result.breakdown ?? null,

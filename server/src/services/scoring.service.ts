@@ -158,3 +158,29 @@ export async function undoLastAction(
 
   return recomputeMatchScore(matchId);
 }
+
+/**
+ * Replace the payload of the most recent action, keeping its position and
+ * timestamp, then recompute. Backs the Distance/Ice Drop judging flow (§5.1),
+ * where the judge logs the zone the instant the dog catches and only then adds
+ * the +0.5 bonuses to that same throw — a correction to the last tap, not a new
+ * throw. Returns null if the heat is unknown or has no action to amend.
+ */
+export async function amendLastAction(
+  matchId: string,
+  actionData: ActionData
+): Promise<RecomputeResult | null> {
+  if (!Types.ObjectId.isValid(matchId)) return null;
+
+  const last = await ActionLog.findOne({ matchId }).sort({
+    createdAt: -1,
+    _id: -1,
+  });
+  if (!last) return null;
+
+  last.actionData = actionData;
+  last.markModified("actionData");
+  await last.save();
+
+  return recomputeMatchScore(matchId);
+}

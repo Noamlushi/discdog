@@ -11,6 +11,7 @@ import {
   ScopedLiveShell,
   type ScopedNavItem,
 } from "../../../../components/live/ScopedLiveShell";
+import { useLeagueRoundRedirect } from "../../../../lib/useLeagueRoundRedirect";
 
 // Scoped competition dashboard shell (/c/:slug/{live,leaderboard,schedule}).
 // Locked to this one competition — no picker, and the nav only switches between
@@ -32,7 +33,10 @@ export default function CompetitionDashLayout({
       .finally(() => setLoading(false));
   }, [slug]);
 
-  if (loading) {
+  // League rounds live in the league tree now; this URL forwards there.
+  const redirecting = useLeagueRoundRedirect(event, slug);
+
+  if (loading || redirecting) {
     return (
       <div dir="rtl" className="grid min-h-screen place-items-center text-cocoa/50">
         טוען…

@@ -71,9 +71,12 @@ export function useLiveHeats(eventId: string | null): LiveHeats {
 
     socket.on(SERVER_EVENTS.MATCH_STATUS_CHANGED, onStatus);
     socket.on(SERVER_EVENTS.LIVE_SCORE_UPDATED, onScore);
+    // A manager reordered the run order — everyone's list is stale.
+    socket.on(SERVER_EVENTS.SCHEDULE_UPDATED, onStatus);
     return () => {
       socket.off(SERVER_EVENTS.MATCH_STATUS_CHANGED, onStatus);
       socket.off(SERVER_EVENTS.LIVE_SCORE_UPDATED, onScore);
+      socket.off(SERVER_EVENTS.SCHEDULE_UPDATED, onStatus);
     };
   }, [socket, eventId, refresh]);
 

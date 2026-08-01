@@ -15,8 +15,11 @@ const ZONE_POINTS: Record<number, number> = { 1: 0, 2: 1, 3: 2, 4: 3, 5: 4 };
 const COUNTED_THROWS = 5;
 const MAX_SCORE = 25;
 
+/** How many throws count toward the score — exported for the league export sheets. */
+export const DISTANCE_COUNTED_THROWS = COUNTED_THROWS;
+
 /** Points for a single throw — zone value plus the two optional +0.5 bonuses. */
-function throwValue(a: ActionData): number {
+export function throwValue(a: ActionData): number {
   let v = ZONE_POINTS[num(a.zone)] ?? 0;
   if (a.jumpBonus) v += 0.5;
   if (a.zoneBonus) v += 0.5;

@@ -159,14 +159,18 @@ There is **no test framework wired up** in either package yet.
   `services/roster-import.service.ts`. Client: `app/admin/import/` with drag-drop upload
   and import summary.
 - **Schedule generation** — `POST /api/schedule/generate` runs the full §7 engine.
-  `PATCH /api/schedule/swap` swaps two heats. `PATCH /api/schedule/reorder` reassigns
-  scheduled times for an ordered list of heats within a pitch (used by drag-and-drop).
+  `PATCH /api/schedule/swap` swaps two heats. `PATCH /api/schedule/reorder` takes
+  `{ eventId, heatIds }` and reassigns the pitch's existing times in the given order
+  (used by both drag-and-drop UIs); it is manager-gated via `requireEventManager` and
+  broadcasts `schedule_updated` so open schedule/live views re-pull.
   Scheduler enforces `minRestTimeMinutes` for both dogs **and** players (previously only
   dogs got rest; same-player back-to-back runs are now blocked by the engine). Client:
   `app/admin/schedule/` with generate button, per-pitch tabs, HTML5 drag-and-drop row
   reordering, conflict highlighting (rows in amber when same player/dog appears within the
   rest window), and a player modal (click any player name → all their heats across both
-  pitches, with gap times and conflict indicators).
+  pitches, with gap times and conflict indicators). The scoped schedule tab
+  (`components/live/ScheduleView.tsx`, used by `/c/:slug/schedule` and each league round)
+  has a manager-only "סידור ידני" mode — drag on desktop, up/down buttons on touch.
 - **Heats read** — `GET /api/heats?eventId=&pitch=&status=` returns heats with populated
   player/dog names (used by the schedule and live screens).
 - **Heat status** — `PUT /api/heats/:id/status` updates status and broadcasts

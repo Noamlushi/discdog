@@ -305,6 +305,32 @@ export const generateLeagueRound = (
 export const getLeagueStandings = (id: string) =>
   request<LeagueStandingsResponse>(`/leagues/${id}/standings`);
 
+/**
+ * Download the league workbook (manager only): a summary sheet with the
+ * standings across all rounds plus one sheet per round with every throw and its
+ * score. Fetched as a blob because a plain <a href> can't carry the bearer
+ * token; the file itself is built server-side (a CSV can't hold sheets).
+ */
+export async function downloadLeagueExport(
+  id: string,
+  leagueName: string
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/leagues/${id}/export`, {
+    cache: "no-store",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `Request failed (${res.status})`);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${leagueName} — תוצאות ליגה.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export const deleteLeague = (id: string) =>
   request<{
     ok: true;

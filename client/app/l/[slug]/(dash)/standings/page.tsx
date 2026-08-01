@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { Download, Medal, X } from "lucide-react";
 import {
+  downloadLeagueExport,
   getHeatStats,
   getLeagueBySlug,
   getLeagueStandings,
@@ -22,8 +23,9 @@ import type {
 
 // League standings — a per-round matrix (one column per configured round across
 // all dates) plus the official aggregate (best-of-N or sum). Public read for
-// spectators/competitors; organizers additionally get per-heat drill-down and a
-// CSV export of every score. Rendered inside the scoped league shell.
+// spectators/competitors; organizers additionally get per-heat drill-down and an
+// Excel export (summary sheet + one sheet per round with every throw, built by
+// GET /leagues/:id/export). Rendered inside the scoped league shell.
 const LEVEL_LABEL: Record<ExperienceLevel, string> = {
   Beginner: "מתחילים",
   Advanced: "מתקדמים",
@@ -38,6 +40,8 @@ export default function LeagueStandingsPage() {
   const [detail, setDetail] = useState<{ matchId: string; team: string } | null>(
     null
   );
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const leagueIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -83,14 +87,28 @@ export default function LeagueStandingsPage() {
         {isManager && (
           <button
             type="button"
-            onClick={() => exportCsv(league.name, standings, levels)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-tangerine/25 bg-white/70 px-3 py-1.5 text-xs font-bold text-cocoa/70 shadow-soft transition hover:border-tangerine/50 dark:bg-slate-900 dark:text-slate-300"
+            disabled={exporting}
+            onClick={() => {
+              setExporting(true);
+              setExportError(null);
+              downloadLeagueExport(league._id, league.name)
+                .catch((e) => setExportError((e as Error).message))
+                .finally(() => setExporting(false));
+            }}
+            title="גיליון סיכום + לשונית לכל סבב עם כל הזריקות"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-tangerine/25 bg-white/70 px-3 py-1.5 text-xs font-bold text-cocoa/70 shadow-soft transition hover:border-tangerine/50 disabled:opacity-50 dark:bg-slate-900 dark:text-slate-300"
           >
             <Download className="h-3.5 w-3.5" />
-            יצוא CSV
+            {exporting ? "מייצא…" : "יצוא לאקסל"}
           </button>
         )}
       </div>
+
+      {exportError && (
+        <p className="mb-4 rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm font-semibold text-danger">
+          {exportError}
+        </p>
+      )}
 
       {levels.map((level) => {
         const rows = standings.levels[level] ?? [];
@@ -349,48 +367,4 @@ function KindDot({ kind }: { kind: ActionKind }) {
   const cls =
     kind === "catch" ? "bg-lime" : kind === "miss" ? "bg-danger" : "bg-cocoa/30";
   return <span className={`h-2.5 w-2.5 rounded-full ${cls}`} />;
-}
-
-// Flatten every score into a CSV (level, rank, player, dog, per-round, total).
-function exportCsv(
-  leagueName: string,
-  standings: LeagueStandingsResponse,
-  levels: ExperienceLevel[]
-) {
-  const cols = standings.rounds;
-  const header = [
-    "רמה",
-    "דירוג",
-    "שחקן",
-    "כלב",
-    ...cols.map((c) => `${c.dateLabel} סבב ${c.roundIndex}`),
-    "סה״כ",
-  ];
-  const lines = [header];
-  for (const level of levels) {
-    for (const row of standings.levels[level] ?? []) {
-      lines.push([
-        LEVEL_LABEL[level] ?? level,
-        String(row.rank),
-        row.player ?? "",
-        row.dog ?? "",
-        ...cols.map((c) => {
-          const cell = row.cells[c.key];
-          return cell ? String(cell.score) : "";
-        }),
-        row.display,
-      ]);
-    }
-  }
-  const csv = lines
-    .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))
-    .join("\n");
-  // Prepend BOM so Excel reads the Hebrew as UTF-8.
-  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${leagueName} — תוצאות ליגה.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
 }

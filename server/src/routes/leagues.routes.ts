@@ -10,6 +10,7 @@ import { uniqueSlug, normalizeSlug } from "../services/slug";
 import { importRoster } from "../services/roster-import.service";
 import { generateLeagueRound } from "../services/league-round.service";
 import { computeLeagueStandings } from "../services/league-standings.service";
+import { buildLeagueWorkbook } from "../services/league-export.service";
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
@@ -83,6 +84,40 @@ router.get("/:id/standings", async (req, res, next) => {
     next(err);
   }
 });
+
+// GET /api/leagues/:id/export — the whole league as an .xlsx (manager): a
+// summary sheet with the standings across all rounds plus one sheet per round
+// holding every heat's throw-by-throw log, as in the judge's heat review. §3.4
+router.get(
+  "/:id/export",
+  authenticate,
+  requireRole(UserRole.Admin, UserRole.Organizer),
+  requireLeagueManager,
+  async (req, res, next) => {
+    try {
+      const { id } = req.params;
+      if (!Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ error: "Invalid league id" });
+      }
+      const workbook = await buildLeagueWorkbook(id);
+      if (!workbook) return res.status(404).json({ error: "League not found" });
+
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+      // The header must be Latin-1, so the ASCII name is the fallback and the
+      // RFC 5987 filename* carries the Hebrew one.
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${workbook.asciiFileName}"; filename*=UTF-8''${encodeURIComponent(workbook.fileName)}`
+      );
+      res.end(workbook.buffer);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 // GET /api/leagues/:id — single league detail (public read).
 router.get("/:id", async (req, res, next) => {

@@ -203,8 +203,11 @@ There is **no test framework wired up** in either package yet.
   ordinary `Event` tagged `leagueId`/`leagueDateId`/`roundIndex`; `services/league-round.service.ts`
   clones the master roster onto the round Event and calls the existing `generateSchedule`.
   `services/league-standings.service.ts` aggregates completed Distance heats per team with
-  best-of-N (default) or sum. Client: `app/admin/leagues/new/`, portal `app/l/[slug]/`, and
-  `app/l/[slug]/standings/`.
+  best-of-N (default) or sum. `GET /api/leagues/:id/export` (manager) builds the league
+  workbook in `services/league-export.service.ts` — a summary sheet with the standings
+  matrix plus one sheet per round listing every heat's throws (zone, bonuses, per-throw
+  points, which throws counted), i.e. the judge's heat review in spreadsheet form. Client:
+  `app/admin/leagues/new/`, portal `app/l/[slug]/`, and `app/l/[slug]/standings/`.
 
 ### Still stubbed / not yet built
 

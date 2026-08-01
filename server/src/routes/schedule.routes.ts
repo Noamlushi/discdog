@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Server } from "socket.io";
 import { Types } from "mongoose";
 import * as XLSX from "xlsx";
 import { authenticate } from "../middleware/auth";
@@ -8,6 +9,7 @@ import { Discipline, ExperienceLevel, UserRole } from "../types";
 import { Event, Match } from "../models";
 import { SCORERS } from "../scoring";
 import { generateSchedule } from "../services/scheduler.service";
+import { SERVER_EVENTS, eventRoom } from "../sockets/events";
 
 const router = Router();
 
@@ -108,13 +110,21 @@ router.patch(
 // PATCH /api/schedule/reorder — reassign scheduled times for an ordered list of
 // heats within a single pitch. Takes the current sorted times and assigns the
 // i-th time to the i-th heat in heatIds. §3.2 manual drag reordering.
+//
+// Body: { eventId, heatIds }. The eventId is what the ownership gate resolves,
+// so an Organizer can reorder the competitions/league rounds they manage — and
+// the heats are then checked to belong to that event.
 router.patch(
   "/reorder",
   authenticate,
-  requireRole(UserRole.Admin),
+  requireRole(UserRole.Admin, UserRole.Organizer),
+  requireEventManager,
   async (req, res, next) => {
     try {
-      const { heatIds } = req.body ?? {};
+      const { eventId, heatIds } = req.body ?? {};
+      if (!eventId || !Types.ObjectId.isValid(String(eventId))) {
+        return res.status(400).json({ error: "A valid eventId is required" });
+      }
       if (
         !Array.isArray(heatIds) ||
         heatIds.length === 0 ||
@@ -125,11 +135,11 @@ router.patch(
           .json({ error: "heatIds must be a non-empty array of valid ids" });
       }
 
-      const heats = await Match.find({ _id: { $in: heatIds } });
+      const heats = await Match.find({ _id: { $in: heatIds }, eventId });
       if (heats.length !== heatIds.length) {
         return res
           .status(404)
-          .json({ error: "One or more heats not found" });
+          .json({ error: "One or more heats not found in this event" });
       }
 
       // Redistribute the existing sorted times across the new order.
@@ -145,6 +155,13 @@ router.patch(
           return heat.save();
         })
       );
+
+      // Everyone watching this event's schedule/live board is now looking at a
+      // stale run order, so tell them to re-pull it (§5.2).
+      const io = req.app.get("io") as Server | undefined;
+      io?.to(eventRoom(String(eventId))).emit(SERVER_EVENTS.SCHEDULE_UPDATED, {
+        eventId: String(eventId),
+      });
 
       res.json({ reordered: heatIds });
     } catch (err) {

@@ -254,7 +254,10 @@ function ScheduleContent() {
       const r = await fetch(`${API}/api/schedule/reorder`, {
         method: "PATCH",
         headers: authJson(),
-        body: JSON.stringify({ heatIds: newOrder.map((h) => h._id) }),
+        body: JSON.stringify({
+          eventId,
+          heatIds: newOrder.map((h) => h._id),
+        }),
       });
       if (!r.ok) throw new Error();
       await loadHeats(eventId);

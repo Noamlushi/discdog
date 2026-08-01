@@ -154,6 +154,17 @@ export const undoScoringAction = (matchId: string) =>
     body: JSON.stringify({ matchId }),
   });
 
+/**
+ * Manual run order (§3.2) — reassigns the pitch's existing times to the heats
+ * in the given order. `heatIds` must be one pitch's heats, top to bottom.
+ * Manager only; the server broadcasts `schedule_updated` to the event room.
+ */
+export const reorderHeats = (eventId: string, heatIds: string[]) =>
+  request<{ reordered: string[] }>("/schedule/reorder", {
+    method: "PATCH",
+    body: JSON.stringify({ eventId, heatIds }),
+  });
+
 /** Heat review — score, catches/misses breakdown, and the throw timeline. */
 export const getHeatStats = (matchId: string) =>
   request<HeatStats>(`/scoring/${matchId}`);

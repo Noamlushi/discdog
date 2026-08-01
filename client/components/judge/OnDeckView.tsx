@@ -1,11 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Dog, MapPin, Play, RefreshCw, User } from "lucide-react";
+import {
+  Check,
+  Dog,
+  ListOrdered,
+  MapPin,
+  Play,
+  RefreshCw,
+  User,
+} from "lucide-react";
 import { useJudgeSession } from "../../context/JudgeSessionContext";
 import { useJudgeScope } from "../../context/JudgeScopeContext";
 import { useSocket } from "../../context/SocketContext";
+import { RunOrderEditor } from "../schedule/RunOrderEditor";
 import { getHeats, setHeatStatus } from "../../lib/api";
 import { disciplineOf } from "../../lib/disciplines";
 import { CLIENT_EVENTS, SERVER_EVENTS } from "../../lib/socketEvents";
@@ -20,32 +29,37 @@ export function OnDeckView() {
   const { eventId, pitch, setPitch, startRun } = useJudgeSession();
   const { socket } = useSocket();
 
-  const [onDeck, setOnDeck] = useState<HeatDto | null>(null);
-  const [upcoming, setUpcoming] = useState<HeatDto[]>([]);
+  const [pitchHeats, setPitchHeats] = useState<HeatDto[]>([]);
+  const [ordering, setOrdering] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // The next competitor is simply the first non-completed heat in the pitch's
-  // run order (heats come back sorted by scheduled time).
   const load = useCallback(() => {
     if (!eventId || pitch == null) {
-      setOnDeck(null);
-      setUpcoming([]);
+      setPitchHeats([]);
       return;
     }
     setLoading(true);
     getHeats({ eventId, pitch })
       .then((heats) => {
-        const queue = heats.filter(
-          (h) => !h.isFinalsPlaceholder && h.status !== "Completed"
-        );
-        setOnDeck(queue[0] ?? null);
-        setUpcoming(queue.slice(1, 4));
+        setPitchHeats(heats);
         setError(null);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [eventId, pitch]);
+
+  // The next competitor is simply the first non-completed heat in the pitch's
+  // run order (heats come back sorted by scheduled time).
+  const queue = useMemo(
+    () =>
+      pitchHeats.filter(
+        (h) => !h.isFinalsPlaceholder && h.status !== "Completed"
+      ),
+    [pitchHeats]
+  );
+  const onDeck = queue[0] ?? null;
+  const upcoming = queue.slice(1, 4);
 
   useEffect(() => {
     load();
@@ -143,32 +157,77 @@ export function OnDeckView() {
         </section>
       )}
 
-      {/* The tail of the queue — so the judge can see the current run order and
-          spot immediately when an organizer has reshuffled it. */}
-      {upcoming.length > 0 && (
-        <section>
-          <h2 className="ds-label mb-2">אחריו</h2>
-          <ol className="space-y-2">
-            {upcoming.map((heat, i) => (
-              <li
-                key={heat._id}
-                className="flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-2.5"
-              >
-                <span className="w-5 shrink-0 text-center font-score text-sm text-muted">
-                  {i + 2}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-sm">
-                  <span className="font-bold">
-                    {refName(heat.team?.playerId) ?? "—"}
-                  </span>
-                  <span className="text-muted">
-                    {" · "}
-                    {refName(heat.team?.dogId) ?? "—"}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ol>
+      {/* The run order, right here in the judging flow — the judge sees who is
+          coming and can fix the order on the spot (someone late, two teams
+          swapping). It writes the same times the public schedule reads, so the
+          dashboard and this queue never disagree. §3.2 */}
+      {pitch != null && pitchHeats.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="ds-label">{ordering ? "סדר עלייה" : "אחריו"}</h2>
+            <button
+              type="button"
+              onClick={() => {
+                setOrdering((v) => !v);
+                setError(null);
+              }}
+              className={`ds-btn px-3 py-1.5 text-xs ${
+                ordering ? "ds-btn-primary" : "ds-btn-ghost"
+              }`}
+            >
+              {ordering ? (
+                <>
+                  <Check className="h-4 w-4" />
+                  סיום סידור
+                </>
+              ) : (
+                <>
+                  <ListOrdered className="h-4 w-4" />
+                  סדר עלייה
+                </>
+              )}
+            </button>
+          </div>
+
+          {ordering ? (
+            <>
+              <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-sm text-muted">
+                גרור או השתמש בחיצים כדי לשנות את סדר העלייה. השעות של המגרש
+                נשארות — רק המתמודדים מתחלפים ביניהן, וגם לוח הזמנים בדשבורד
+                מתעדכן.
+              </p>
+              <RunOrderEditor
+                eventId={eventId!}
+                heats={pitchHeats}
+                onChanged={load}
+                onError={setError}
+              />
+            </>
+          ) : (
+            upcoming.length > 0 && (
+              <ol className="space-y-2">
+                {upcoming.map((heat, i) => (
+                  <li
+                    key={heat._id}
+                    className="flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-2.5"
+                  >
+                    <span className="w-5 shrink-0 text-center font-score text-sm text-muted">
+                      {i + 2}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-sm">
+                      <span className="font-bold">
+                        {refName(heat.team?.playerId) ?? "—"}
+                      </span>
+                      <span className="text-muted">
+                        {" · "}
+                        {refName(heat.team?.dogId) ?? "—"}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )
+          )}
         </section>
       )}
     </div>

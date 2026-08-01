@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import { ActionLog, League, Match } from "../models";
-import { Discipline, ExperienceLevel, MatchStatus } from "../types";
+import { ExperienceLevel } from "../types";
 import { computeLeagueStandings } from "./league-standings.service";
 import { DISTANCE_COUNTED_THROWS, throwValue } from "../scoring/distance";
 import { isMiss, num } from "../scoring/util";
@@ -9,9 +9,9 @@ import type { ActionData } from "../scoring/types";
 // League workbook export (§3.4) — one .xlsx holding:
 //   • "סיכום ליגה"  — the standings matrix: every team, its score per round and
 //                      the official aggregate (best-of-N / sum).
-//   • one sheet per generated round — every heat with its throw-by-throw log,
-//     the same data the judge sees in "סיכום מקצה" (score, catches, misses,
-//     success rate, and each throw's zone/bonuses/points).
+//   • one sheet per generated round — a row per competitor: name, dog, then
+//     every throw side by side with its points, the heat score, and the run's
+//     catch/miss stats — the judge's "סיכום מקצה", laid out across one row.
 // Built server-side because a CSV cannot carry multiple sheets.
 
 const LEVEL_HE: Record<string, string> = {
@@ -51,22 +51,6 @@ function throwLabel(a: ActionData): string {
   if (a.zoneBonus) bonuses.push("בונוס +0.5");
   return `אזור ${num(a.zone)}${bonuses.length ? ` (${bonuses.join(", ")})` : ""}`;
 }
-
-/**
- * Which throws feed the score — Distance counts the **best 5** (not the first
- * 5), so mark those rows. Misses are never candidates; they are worth 0 and
- * would otherwise occupy a slot in a short run.
- */
-function countedThrowIndexes(actions: ActionData[]): Set<number> {
-  const candidates = actions
-    .map((a, i) => ({ i, value: isMiss(a) ? null : throwValue(a) }))
-    .filter((c): c is { i: number; value: number } => c.value !== null)
-    .sort((a, b) => b.value - a.value || a.i - b.i)
-    .slice(0, DISTANCE_COUNTED_THROWS);
-  return new Set(candidates.map((c) => c.i));
-}
-
-const YES = "✓";
 
 interface NamedRef {
   name?: string;
@@ -189,79 +173,96 @@ export async function buildLeagueWorkbook(
       byMatch.set(key, list);
     }
 
-    const rows: (string | number)[][] = [
-      [
-        "רמה",
-        "שחקן",
-        "כלב",
-        "מגרש",
-        "שעה",
-        "סטטוס",
-        "ניקוד מקצה",
-        "תפיסות",
-        "החטאות",
-        "אחוז הצלחה",
-        "# זריקה",
-        "זמן",
-        "תיאור",
-        "אזור",
-        "בונוס קפיצה",
-        "בונוס אזור",
-        "נק׳ לזריקה",
-        `נספרה (${DISTANCE_COUNTED_THROWS} הטובות)`,
-      ],
+    // One row per competitor: name, dog, then each throw side by side with its
+    // points, the heat score, and the run's stats at the far end.
+    const throwsPerHeat = new Map<string, ActionData[]>();
+    for (const heat of heats) {
+      throwsPerHeat.set(
+        String(heat._id),
+        (byMatch.get(String(heat._id)) ?? []).map(
+          (l) => (l.actionData ?? {}) as ActionData
+        )
+      );
+    }
+    const maxThrows = Math.max(
+      DISTANCE_COUNTED_THROWS,
+      ...[...throwsPerHeat.values()].map((a) => a.length)
+    );
+
+    const header = [
+      "שחקן",
+      "כלב",
+      ...Array.from({ length: maxThrows }, (_, i) => [
+        `זריקה ${i + 1}`,
+        `נק׳ ${i + 1}`,
+      ]).flat(),
+      "סה״כ",
+      "תפיסות",
+      "החטאות",
+      "אחוז הצלחה",
+      "שעה",
     ];
 
-    for (const heat of heats) {
-      const heatLogs = byMatch.get(String(heat._id)) ?? [];
-      const actions = heatLogs.map((l) => (l.actionData ?? {}) as ActionData);
-      const misses = actions.filter(isMiss).length;
-      const catches = actions.length - misses;
-      const rate =
-        actions.length > 0 ? Math.round((catches / actions.length) * 100) : "";
-      const counted =
-        heat.categoryId === Discipline.Distance
-          ? countedThrowIndexes(actions)
-          : new Set<number>();
-      // The heat's own columns repeat on every throw row so the sheet stays a
-      // single sortable/filterable table.
-      const heatCells: (string | number)[] = [
-        LEVEL_HE[heat.experienceLevel] ?? heat.experienceLevel,
-        refName(heat.team?.playerId) || (heat.isFinalsPlaceholder ? "— גמר —" : ""),
-        refName(heat.team?.dogId),
-        heat.pitchNumber,
-        timeHHmm(heat.scheduledTime),
-        heat.status === MatchStatus.Completed ? "הושלם" : "לא הושלם",
-        typeof heat.finalScore === "number" ? heat.finalScore : "",
-        catches,
-        misses,
-        rate,
-      ];
+    const rows: (string | number)[][] = [
+      [`${col.dateLabel} · סבב ${col.roundIndex}`],
+      [
+        `הניקוד = ${DISTANCE_COUNTED_THROWS} הזריקות הטובות ביותר (עד 25 נק׳), ולכן ייתכן שסכום כל הזריקות גבוה מהסה״כ.`,
+      ],
+      [],
+    ];
 
-      if (actions.length === 0) {
-        rows.push([...heatCells, "", "", "אין זריקות רשומות", "", "", "", "", ""]);
-        continue;
-      }
+    // Grouped by experience level — the levels are ranked separately — best
+    // score first, so each round sheet doubles as that round's results table.
+    for (const level of levels) {
+      const inLevel = heats.filter((h) => h.experienceLevel === level);
+      if (inLevel.length === 0) continue;
+      inLevel.sort(
+        (a, b) =>
+          (typeof b.finalScore === "number" ? b.finalScore : -1) -
+          (typeof a.finalScore === "number" ? a.finalScore : -1)
+      );
 
-      actions.forEach((a, i) => {
-        const miss = isMiss(a);
+      rows.push([LEVEL_HE[level] ?? level]);
+      rows.push(header);
+
+      for (const heat of inLevel) {
+        const actions = throwsPerHeat.get(String(heat._id)) ?? [];
+        const misses = actions.filter(isMiss).length;
+        const catches = actions.length - misses;
+        const throwCells: (string | number)[] = [];
+        for (let i = 0; i < maxThrows; i++) {
+          const a = actions[i];
+          if (!a) {
+            throwCells.push("", "");
+            continue;
+          }
+          throwCells.push(throwLabel(a), isMiss(a) ? 0 : throwValue(a));
+        }
         rows.push([
-          ...heatCells,
-          i + 1,
-          heatLogs[i].timestamp,
-          throwLabel(a),
-          miss ? "" : num(a.zone),
-          !miss && a.jumpBonus ? YES : "",
-          !miss && a.zoneBonus ? YES : "",
-          miss ? 0 : throwValue(a),
-          counted.has(i) ? YES : "",
+          refName(heat.team?.playerId) ||
+            (heat.isFinalsPlaceholder ? "— גמר —" : ""),
+          refName(heat.team?.dogId),
+          ...throwCells,
+          typeof heat.finalScore === "number" ? heat.finalScore : "",
+          catches,
+          misses,
+          actions.length > 0 ? Math.round((catches / actions.length) * 100) : "",
+          timeHHmm(heat.scheduledTime),
         ]);
-      });
+      }
+      rows.push([]);
     }
 
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws["!cols"] = widths([
-      10, 18, 14, 7, 7, 11, 11, 8, 8, 11, 8, 8, 24, 7, 12, 12, 11, 16,
+      18,
+      14,
+      ...Array.from({ length: maxThrows }, () => [22, 7]).flat(),
+      9,
+      8,
+      8,
+      11,
+      7,
     ]);
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
   }

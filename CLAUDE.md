@@ -205,8 +205,8 @@ There is **no test framework wired up** in either package yet.
   `services/league-standings.service.ts` aggregates completed Distance heats per team with
   best-of-N (default) or sum. `GET /api/leagues/:id/export` (manager) builds the league
   workbook in `services/league-export.service.ts` — a summary sheet with the standings
-  matrix plus one sheet per round listing every heat's throws (zone, bonuses, per-throw
-  points, which throws counted), i.e. the judge's heat review in spreadsheet form. Client:
+  matrix plus one sheet per round with a row per competitor (name, dog, then each throw
+  side by side with its points, the heat score, and catch/miss stats). Client:
   `app/admin/leagues/new/`, portal `app/l/[slug]/`, and `app/l/[slug]/standings/`.
 
 ### Still stubbed / not yet built

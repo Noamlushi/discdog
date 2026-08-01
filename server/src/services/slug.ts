@@ -31,3 +31,20 @@ export async function uniqueSlug(
   // Extremely unlikely; fall back to a longer random tail.
   return `${base}-${rand()}${rand()}`;
 }
+
+/**
+ * Clean an organizer-chosen slug into the URL-safe form we store. A league's
+ * slug is the root of its round tree (/l/:slug/:date/:round), so organizers
+ * pick it themselves rather than living with the random fallback. Returns null
+ * when nothing usable is left.
+ */
+export function normalizeSlug(input: unknown): string | null {
+  if (typeof input !== "string") return null;
+  const s = input
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  // Keep it distinguishable from a date segment and short enough to type.
+  return s.length >= 2 && s.length <= 60 ? s : null;
+}

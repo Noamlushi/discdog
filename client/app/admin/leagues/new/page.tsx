@@ -26,6 +26,9 @@ interface DateRow {
 export default function NewLeaguePage() {
   const router = useRouter();
   const [name, setName] = useState("");
+  // The league slug is the root of its round tree (/l/:slug/:date/:round), so
+  // the organizer picks it rather than living with the random fallback.
+  const [slug, setSlug] = useState("");
   const [dates, setDates] = useState<DateRow[]>([
     { date: "", roundsCount: 2, label: "" },
   ]);
@@ -55,6 +58,7 @@ export default function NewLeaguePage() {
     try {
       const league = await createLeague({
         name,
+        ...(slug.trim() ? { slug: slug.trim() } : {}),
         dates: dates
           .filter((d) => d.date)
           .map((d) => ({
@@ -96,6 +100,29 @@ export default function NewLeaguePage() {
             onChange={(e) => setName(e.target.value)}
             className={inputCls}
           />
+        </Field>
+
+        <Field label="כתובת הליגה" icon={<Flag className="h-4 w-4" />}>
+          <div className="flex items-center gap-2">
+            <span className="shrink-0 text-sm font-semibold text-slate-500 dark:text-slate-400">
+              /l/
+            </span>
+            <input
+              type="text"
+              dir="ltr"
+              placeholder="distance-2026"
+              value={slug}
+              onChange={(e) => setSlug(e.target.value)}
+              className={inputCls}
+            />
+          </div>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            אותיות באנגלית, ספרות ומקפים. כל הסבבים יישבו תחתיה — למשל
+            <span dir="ltr" className="mx-1 font-mono">
+              /l/{slug.trim() || "distance-2026"}/2026-07-25/1
+            </span>
+            . אפשר להשאיר ריק ותיווצר כתובת אוטומטית.
+          </p>
         </Field>
 
         {/* Dates */}

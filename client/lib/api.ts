@@ -234,6 +234,8 @@ export const getLeagueBySlug = (slug: string) =>
 
 export const createLeague = (input: {
   name: string;
+  /** Chosen URL for the league — the root of its round tree. */
+  slug?: string;
   dates: { date: string; roundsCount: number; label?: string }[];
   scoring: { mode: "bestOf" | "sum"; bestN: number };
   experienceLevels?: string[];
@@ -248,6 +250,8 @@ export const createLeague = (input: {
 
 export const updateLeague = (id: string, patch: Partial<{
   name: string;
+  /** Renaming this moves the whole round tree — old /l/:slug links stop working. */
+  slug: string;
   dates: { date: string; roundsCount: number; label?: string }[];
   scoring: { mode: "bestOf" | "sum"; bestN: number };
   experienceLevels: string[];

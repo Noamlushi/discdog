@@ -18,6 +18,7 @@ import {
 import { getEventBySlug } from "../../../lib/api";
 import type { EventDto } from "../../../lib/types";
 import { useAuth } from "../../../context/AuthContext";
+import { useLeagueRoundRedirect } from "../../../lib/useLeagueRoundRedirect";
 
 // Competition portal — the shareable unique-URL entry point (/c/:slug). Public
 // visitors get the live dashboard + leaderboard; managers (Admin/Organizer) also
@@ -42,10 +43,13 @@ export default function CompetitionPortalPage() {
       .finally(() => setLoading(false));
   }, [slug, router]);
 
+  // A league round has no portal of its own — it lives in the league tree.
+  const redirecting = useLeagueRoundRedirect(event, slug);
+
   return (
     <main className="min-h-screen bg-arena text-ink">
       <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:py-14">
-        {loading ? (
+        {loading || redirecting ? (
           <p className="py-16 text-center text-muted">טוען…</p>
         ) : !event ? null : (
           <Portal event={event} />

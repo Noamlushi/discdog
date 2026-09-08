@@ -5,6 +5,7 @@ export const SERVER_EVENTS = {
   LIVE_SCORE_UPDATED: "live_score_updated",
   MATCH_STATUS_CHANGED: "match_status_changed",
   FREESTYLE_SYNC: "freestyle_sync",
+  SCHEDULE_REORDERED: "schedule_reordered",
 } as const;
 
 export const CLIENT_EVENTS = {

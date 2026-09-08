@@ -9,6 +9,7 @@ import type {
   LeagueDto,
   LeagueRosterEntryDto,
   LeagueStandingsResponse,
+  LeagueSummaryResponse,
   MatchStatus,
   OrganizerDto,
   ScoreResponse,
@@ -124,6 +125,18 @@ export const setHeatStatus = (
     body: JSON.stringify({ status, elapsedSeconds }),
   });
 
+/**
+ * Rewrite the run order for one pitch (§3.2). The server redistributes the
+ * heats' existing time slots across the new order, so this only ever permutes
+ * `heatIds` among themselves — pass the full ordered list of the heats being
+ * arranged, not just the ones that moved.
+ */
+export const reorderHeats = (heatIds: string[]) =>
+  request<{ reordered: string[] }>("/schedule/reorder", {
+    method: "PATCH",
+    body: JSON.stringify({ heatIds }),
+  });
+
 export const postScoringAction = (
   matchId: string,
   timestamp: string,
@@ -132,6 +145,20 @@ export const postScoringAction = (
   request<ScoreResponse>("/scoring/action", {
     method: "POST",
     body: JSON.stringify({ matchId, timestamp, actionData }),
+  });
+
+/**
+ * Rewrite the last logged action in place — used by Distance/Ice Drop, where
+ * the zone is logged the instant the dog catches and the +0.5 bonuses are added
+ * to that same throw a moment later.
+ */
+export const amendScoringAction = (
+  matchId: string,
+  actionData: Record<string, unknown>
+) =>
+  request<ScoreResponse>("/scoring/amend", {
+    method: "POST",
+    body: JSON.stringify({ matchId, actionData }),
   });
 
 export const undoScoringAction = (matchId: string) =>
@@ -220,6 +247,8 @@ export const getLeagueBySlug = (slug: string) =>
 
 export const createLeague = (input: {
   name: string;
+  /** Chosen URL for the league — the root of its round tree. */
+  slug?: string;
   dates: { date: string; roundsCount: number; label?: string }[];
   scoring: { mode: "bestOf" | "sum"; bestN: number };
   experienceLevels?: string[];
@@ -234,6 +263,8 @@ export const createLeague = (input: {
 
 export const updateLeague = (id: string, patch: Partial<{
   name: string;
+  /** Renaming this moves the whole round tree — old /l/:slug links stop working. */
+  slug: string;
   dates: { date: string; roundsCount: number; label?: string }[];
   scoring: { mode: "bestOf" | "sum"; bestN: number };
   experienceLevels: string[];
@@ -286,6 +317,9 @@ export const generateLeagueRound = (
 
 export const getLeagueStandings = (id: string) =>
   request<LeagueStandingsResponse>(`/leagues/${id}/standings`);
+
+export const getLeagueSummary = (id: string) =>
+  request<LeagueSummaryResponse>(`/leagues/${id}/summary`);
 
 export const deleteLeague = (id: string) =>
   request<{

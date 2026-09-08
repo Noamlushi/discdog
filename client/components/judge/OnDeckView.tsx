@@ -1,13 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dog, MapPin, Play, User } from "lucide-react";
 import { useJudgeSession } from "../../context/JudgeSessionContext";
 import { useJudgeScope } from "../../context/JudgeScopeContext";
+import { useSocket } from "../../context/SocketContext";
 import { getHeats, setHeatStatus } from "../../lib/api";
+import { SERVER_EVENTS } from "../../lib/socketEvents";
 import { disciplineOf } from "../../lib/disciplines";
 import { refName, type HeatDto } from "../../lib/types";
+import { RunOrderQueue } from "../schedule/RunOrderQueue";
 
 // §3.3 On-Deck (scoped) — the competition is fixed by the route (JudgeScope), so
 // there is no competition picker. Pick a pitch (skipped for single-pitch events),
@@ -16,13 +19,14 @@ export function OnDeckView() {
   const router = useRouter();
   const { basePath, event } = useJudgeScope();
   const { eventId, pitch, setPitch, startRun } = useJudgeSession();
+  const { socket } = useSocket();
 
   const [onDeck, setOnDeck] = useState<HeatDto | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Load the next heat whenever the (locked) event or chosen pitch changes.
-  useEffect(() => {
+  const loadOnDeck = useCallback(() => {
     if (!eventId || pitch == null) {
       setOnDeck(null);
       return;
@@ -39,6 +43,20 @@ export function OnDeckView() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [eventId, pitch]);
+
+  useEffect(() => {
+    loadOnDeck();
+  }, [loadOnDeck]);
+
+  // Reordering the queue below changes who is up next — including from another
+  // judge's phone — so the card has to follow the run order, not a stale fetch.
+  useEffect(() => {
+    if (!socket) return;
+    socket.on(SERVER_EVENTS.SCHEDULE_REORDERED, loadOnDeck);
+    return () => {
+      socket.off(SERVER_EVENTS.SCHEDULE_REORDERED, loadOnDeck);
+    };
+  }, [socket, loadOnDeck]);
 
   const handleStart = async () => {
     if (!onDeck) return;
@@ -107,6 +125,10 @@ export function OnDeckView() {
           )}
         </section>
       )}
+
+      {/* The rest of the queue, reorderable in place — the order changes at the
+          tent, and this is the screen the judge already has open (§3.2). */}
+      <RunOrderQueue eventId={eventId} pitch={pitch} />
     </div>
   );
 }

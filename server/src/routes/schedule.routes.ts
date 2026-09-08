@@ -1,6 +1,8 @@
 import { Router } from "express";
+import type { Server } from "socket.io";
 import { Types } from "mongoose";
 import * as XLSX from "xlsx";
+import { SERVER_EVENTS, eventRoom } from "../sockets/events";
 import { authenticate } from "../middleware/auth";
 import { requireRole } from "../middleware/requireRole";
 import { requireEventManager } from "../middleware/requireManager";
@@ -108,10 +110,16 @@ router.patch(
 // PATCH /api/schedule/reorder — reassign scheduled times for an ordered list of
 // heats within a single pitch. Takes the current sorted times and assigns the
 // i-th time to the i-th heat in heatIds. §3.2 manual drag reordering.
+//
+// Judges get this too, not just managers: the running order genuinely changes at
+// the tent — a team is not there, a dog is not ready — and the person holding
+// the phone is the judge. It only permutes existing slots within one event, so
+// the worst a judge can do is reshuffle their own queue. The reorder broadcasts
+// `schedule_reordered` so every other judge/spectator screen follows along.
 router.patch(
   "/reorder",
   authenticate,
-  requireRole(UserRole.Admin),
+  requireRole(UserRole.Admin, UserRole.Organizer, UserRole.Judge),
   async (req, res, next) => {
     try {
       const { heatIds } = req.body ?? {};
@@ -124,12 +132,24 @@ router.patch(
           .status(400)
           .json({ error: "heatIds must be a non-empty array of valid ids" });
       }
+      if (new Set(heatIds.map(String)).size !== heatIds.length) {
+        return res.status(400).json({ error: "heatIds must be unique" });
+      }
 
       const heats = await Match.find({ _id: { $in: heatIds } });
       if (heats.length !== heatIds.length) {
         return res
           .status(404)
           .json({ error: "One or more heats not found" });
+      }
+
+      // A reorder only ever permutes slots inside one event's pitch — mixing
+      // events would hand a heat a time slot from a different competition.
+      const eventId = String(heats[0].eventId);
+      if (heats.some((h) => String(h.eventId) !== eventId)) {
+        return res
+          .status(400)
+          .json({ error: "All heats must belong to the same event" });
       }
 
       // Redistribute the existing sorted times across the new order.
@@ -145,6 +165,13 @@ router.patch(
           return heat.save();
         })
       );
+
+      const io = req.app.get("io") as Server | undefined;
+      io?.to(eventRoom(eventId)).emit(SERVER_EVENTS.SCHEDULE_REORDERED, {
+        eventId,
+        pitchNumber: heats[0].pitchNumber,
+        heatIds: heatIds as string[],
+      });
 
       res.json({ reordered: heatIds });
     } catch (err) {

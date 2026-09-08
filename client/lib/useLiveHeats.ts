@@ -70,9 +70,12 @@ export function useLiveHeats(eventId: string | null): LiveHeats {
     };
 
     socket.on(SERVER_EVENTS.MATCH_STATUS_CHANGED, onStatus);
+    // A mid-competition reorder rewrites the run order for everyone watching.
+    socket.on(SERVER_EVENTS.SCHEDULE_REORDERED, onStatus);
     socket.on(SERVER_EVENTS.LIVE_SCORE_UPDATED, onScore);
     return () => {
       socket.off(SERVER_EVENTS.MATCH_STATUS_CHANGED, onStatus);
+      socket.off(SERVER_EVENTS.SCHEDULE_REORDERED, onStatus);
       socket.off(SERVER_EVENTS.LIVE_SCORE_UPDATED, onScore);
     };
   }, [socket, eventId, refresh]);

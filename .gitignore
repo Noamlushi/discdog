@@ -14,3 +14,14 @@ client/public/sw.js.map
 
 # Claude Code local (machine-specific) settings
 .claude/settings.local.json
+.logs/
+
+# Claude Code worktrees — full checkouts (with their own .env), never committed
+.claude/worktrees/
+
+# Local backups of env files
+*.env.bak
+.env.*.bak
+
+# TS incremental build cache
+client/tsconfig.tsbuildinfo

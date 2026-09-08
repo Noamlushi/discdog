@@ -30,6 +30,14 @@ is reused unchanged. The league has its own dashboard + standings; the winner is
 team that skips a date is still ranked on its best runs. Roster is imported **once** at
 the league level and cloned onto each round Event.
 
+**League URLs are a tree** (added 2026-09-08): a round is addressed by *where it sits in
+the league*, not by its own random slug — `/l/:slug` → `/l/:slug/:date` →
+`/l/:slug/:date/:round` → `/l/:slug/:date/:round/{live,schedule,leaderboard,judge}`. Every
+level is reachable by trimming a segment. `lib/leaguePaths.ts` builds these paths (it is
+the only place that formats them) and `lib/useLeagueRound.ts` resolves one back to its
+league/date/round Event. Old `/c/:eventSlug` links to a round still work —
+`lib/useLeagueRoundRedirect.ts` forwards them into the tree, sub-view and all.
+
 **Auth (§9.3)**: real JWT login now exists. Roles are `Admin | Organizer | Judge | Player`.
 Admin creates competitions/leagues and provisions Organizers; Organizers manage the
 competitions/leagues they own. Public read endpoints (events/leagues lists + details,
@@ -48,6 +56,14 @@ Two independent packages, no workspace tooling — install and run each separate
 - `client/` — Next.js 15 App Router + React 19 + Tailwind v4 + Serwist PWA (port 3000)
 
 ## Commands
+
+The fastest path on this machine is `./start.sh` — it starts MongoDB, the API and the
+client together, and **rewrites `server/.env` `CLIENT_ORIGIN` and `client/.env.local`
+`NEXT_PUBLIC_API_URL`/`NEXT_PUBLIC_SOCKET_URL` with the machine's current LAN IP** so
+judging from a phone keeps working after the Wi-Fi changes (`--local` to stay on
+localhost, `--seed` to also bootstrap the admin, `--stop` to shut the two servers down,
+`--install` to force `npm install`). Logs land in `.logs/` (gitignored). To run the
+pieces by hand instead:
 
 Start MongoDB first (required by the server):
 
@@ -123,6 +139,17 @@ There is **no test framework wired up** in either package yet.
   `/live` route** — it was removed (owner decision 2026-07-15); every dashboard belongs to
   exactly one competition/league. `LiveSessionContext` is locked-only: `LiveSessionProvider`
   requires `fixedEventId` and exposes `{ eventId, event, loading, error }` (no picker/state).
+- **League round routes (`app/l/[slug]/[date]/[round]/`):** the per-round dashboards and
+  judging live *inside* the league tree — `(dash)/{live,schedule,leaderboard}` and
+  `judge/{,scoring,log}`, re-exporting the same view implementations as `/c/:slug` does, so
+  a round has no separate UI. `[date]/page.tsx` lists that date's rounds. Both layouts
+  resolve the round with `useLeagueRound` and render `components/league/RoundMissing.tsx`
+  when the league/date/round doesn't resolve — a round that simply hasn't been generated yet
+  is the common, non-error case and says so. **Never hardcode these paths** — use
+  `lib/leaguePaths.ts`.
+- **Judging is never a dead end:** `JudgeScopeContext` carries an optional
+  `up: { href, label }` that `JudgeShell` renders as the first bottom-nav item — the league
+  for a round, the competition portal for a standalone event.
 - **Auth:** `context/AuthContext.tsx` (token in localStorage via `lib/api` `getToken/setToken`)
   wraps the app in `app/layout.tsx`. `/login` authenticates; `components/auth/RequireAuth.tsx`
   (`RequireManager`) guards the admin + judge shells. `lib/api.ts` `request()`/`upload()`
@@ -167,6 +194,28 @@ There is **no test framework wired up** in either package yet.
   reordering, conflict highlighting (rows in amber when same player/dog appears within the
   rest window), and a player modal (click any player name → all their heats across both
   pitches, with gap times and conflict indicators).
+- **Live run-order editing (§3.2)** — the order is only settled at the tent, so
+  `components/schedule/RunOrderQueue.tsx` makes the pending queue reorderable from the
+  phone. Three ways to move a row: **tap the position number and type the target place**
+  (the primary one — the order is discussed in numbers at the tent), the pointer-based
+  drag grip, and לראש / למעלה / למטה / **דלג** buttons (דלג pushes a no-show to the end).
+  Optimistic with rollback. **Position numbers count only heats that have not run yet** —
+  1 is whoever goes on next, and they renumber after every completed run. Typing a number
+  **pushes**: the team lands on that place and everyone from there down shifts one back,
+  keeping their relative order (never a swap); out-of-range numbers clamp. **Moving the team
+  at position 1 asks for confirmation** — they are already at the line, and row 0's action
+  buttons are always expanded so it is one mistap away; all three input paths funnel through
+  `requestMove`, and the pending move is held by heat id so a socket renumber mid-dialog
+  can't redirect it. Everything below row 0 stays instant. Drag picks its
+  target by measuring each row's centre at drag start, not a fixed stride — row 0 is always
+  expanded, so a guessed stride drifted further off with every row crossed. It is mounted in
+  two places — under the judge's On-Deck card (`OnDeckView`) and on the manager's view of
+  `ScheduleView`, which **defaults to the editable queue for managers** (the toggle flips to
+  the full schedule instead). `PATCH /schedule/reorder`
+  is open to **Admin | Organizer | Judge** (it only permutes one event's existing slots —
+  the route rejects duplicate ids and heats from more than one event, so a slot can never
+  cross competitions) and broadcasts `schedule_reordered`, which `useLiveHeats`,
+  `RunOrderQueue` and `OnDeckView` all listen to so every screen follows within the second.
 - **Heats read** — `GET /api/heats?eventId=&pitch=&status=` returns heats with populated
   player/dog names (used by the schedule and live screens).
 - **Heat status** — `PUT /api/heats/:id/status` updates status and broadcasts
@@ -178,11 +227,26 @@ There is **no test framework wired up** in either package yet.
   `live_score_updated` (+ `freestyle_sync` for Freestyle). `GET /api/scoring/:matchId`
   returns the recomputed score, breakdown, and the throw-by-throw timeline.
   Distance/Ice Drop count the **best 5 throws** (not the first 5).
+  `POST /api/scoring/amend` rewrites the **last** action's payload in place
+  (`amendLastAction`) keeping its slot and timestamp, then recomputes — a correction to the
+  tap just made, not a new throw. It exists because Distance judging is two beats: the zone
+  is logged the instant the dog catches, the bonuses land a moment later.
 - **Judge scoring UI** (`app/judge/`) — full On-Deck → Scoring → review flow.
   `components/judge/scorers/*` has one tap-scorer per scorer family (zones, count,
   area, agility, crisscross, timed, panel) dispatched by discipline;
   `JudgeSessionContext` holds the active heat + run start; `SmartTimer` is an
   epoch-derived resilient clock. Finishing a heat lands on the review page.
+  `ScorerProps.onAction` **resolves with the recomputed score (or null on failure)** so a
+  scorer can tell the action landed; `onAmendLast` is the optional amend channel.
+- **Distance/Ice Drop scoring is log-then-refine** — `DistanceScorer` logs the throw on the
+  single zone tap with no bonus (the common case is one tap), then shows a bonus strip for
+  *that* throw where אזור בונוס and the jump bonus (+0.5 each, independent) can still be
+  added; each toggle amends the same action instead of logging another throw. The strip
+  drops itself when the throw it points at stops being the last action (e.g. a global undo).
+  Buttons **lead with the points, not the zone** — zone N is worth N−1 points and judges
+  read the big number as the score, so the score is the only large number, the zone is a
+  caption, and a lime value-bar makes the ranking readable without reading; highest value
+  sits at the top, the easiest reach.
 - **Per-heat stats + review** — every scorer reports `catches`/`misses` in its
   breakdown; misses are logged uniformly as `{ miss: true }` via the shared
   `MissButton`. `app/judge/log` is the post-run summary (catch/miss/rate cards +
@@ -205,6 +269,18 @@ There is **no test framework wired up** in either package yet.
   `services/league-standings.service.ts` aggregates completed Distance heats per team with
   best-of-N (default) or sum. Client: `app/admin/leagues/new/`, portal `app/l/[slug]/`, and
   `app/l/[slug]/standings/`.
+- **Organizer-chosen league slug** — the slug is the root of the whole round tree, so it is
+  picked rather than random: `POST /api/leagues` and `PATCH /api/leagues/:id` accept `slug`,
+  cleaned by `normalizeSlug` in `services/slug.ts` (2–60 chars of `a-z0-9-`; 409 when taken,
+  random `uniqueSlug` fallback when omitted). Renaming is deliberate and **breaks old
+  `/l/:slug` links** — hence its own control, `components/league/LeagueSlugEditor.tsx`, not
+  a side effect of renaming the league.
+- **League summary** — `GET /api/leagues/:id/summary` (public) →
+  `services/league-summary.service.ts`: league-wide run statistics across every round —
+  overview counters, per-round averages/bests, records (top scores, best single throw, most
+  consistent, biggest improvement, per-level top), catch rates, and Distance zone
+  distribution. Standings say who is winning; this says how the league *ran*, and it is the
+  page an organizer sends round after a date. Client: `app/l/[slug]/summary/`.
 
 ### Still stubbed / not yet built
 

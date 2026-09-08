@@ -11,6 +11,7 @@ import { SmartTimer, elapsedSince } from "./SmartTimer";
 import { UndoFab } from "./UndoFab";
 import { DisciplineScorer } from "./scorers";
 import {
+  amendScoringAction,
   postScoringAction,
   setHeatStatus,
   undoScoringAction,
@@ -62,16 +63,35 @@ export function ScoringView() {
 
   const handleAction = useCallback(
     async (actionData: Record<string, unknown>) => {
-      if (!heat) return;
+      if (!heat) return null;
       try {
         const ts = formatClock(elapsedSince(runStartedAt));
         const r = await postScoringAction(heat._id, ts, actionData);
         setScore(r);
+        return r;
       } catch (e) {
         setError((e as Error).message);
+        return null;
       }
     },
     [heat, runStartedAt]
+  );
+
+  // Rewrite the throw that was just logged (Distance's bonus strip) — keeps it
+  // in place in the timeline rather than logging a second throw.
+  const handleAmendLast = useCallback(
+    async (actionData: Record<string, unknown>) => {
+      if (!heat) return null;
+      try {
+        const r = await amendScoringAction(heat._id, actionData);
+        setScore(r);
+        return r;
+      } catch (e) {
+        setError((e as Error).message);
+        return null;
+      }
+    },
+    [heat]
   );
 
   const handleUndo = useCallback(async () => {
@@ -158,6 +178,7 @@ export function ScoringView() {
       <DisciplineScorer
         heat={heat}
         onAction={handleAction}
+        onAmendLast={handleAmendLast}
         disabled={busy}
         score={score}
         onFinish={() => router.push(`${basePath}/log`)}

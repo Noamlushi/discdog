@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
+  BarChart3,
   CalendarDays,
   ChevronRight,
   Gavel,
@@ -31,6 +32,8 @@ import type {
   LeagueRosterEntryDto,
 } from "../../../lib/types";
 import { useAuth } from "../../../context/AuthContext";
+import { dateLabel, leagueDatePath, leagueRoundPath } from "../../../lib/leaguePaths";
+import { LeagueSlugEditor } from "../../../components/league/LeagueSlugEditor";
 
 // League portal (/l/:slug) — the shareable league URL. Public visitors see the
 // dates, per-round links, and the standings dashboard. Managers also import the
@@ -188,6 +191,12 @@ export default function LeaguePortalPage() {
                 ? `הטוב מ-${league.scoring.bestN} סבבים`
                 : "סכום כל הסבבים"}
             </span>
+            {/* The league URL is the root every round hangs off. */}
+            {isManager && (
+              <div className="mt-2">
+                <LeagueSlugEditor league={league} />
+              </div>
+            )}
           </div>
         </div>
 
@@ -203,6 +212,21 @@ export default function LeaguePortalPage() {
             <h3 className="text-lg font-extrabold">דשבורד וטבלת ליגה</h3>
             <p className="mt-1 flex-1 text-sm text-muted">
               דירוג מצטבר לפי הסבבים הטובים ביותר
+            </p>
+          </Link>
+
+          {/* Public like the standings: the summary is the page an organizer
+              sends round to the group after a date. */}
+          <Link
+            href={`/l/${league.slug}/summary`}
+            className="group ds-card flex flex-col p-6 transition hover:border-accent/50 hover:shadow-glow"
+          >
+            <span className="mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-lime to-lime-bright text-lime-ink shadow-glow transition group-hover:scale-105">
+              <BarChart3 className="h-7 w-7" />
+            </span>
+            <h3 className="text-lg font-extrabold">סיכום וסטטיסטיקות</h3>
+            <p className="mt-1 flex-1 text-sm text-muted">
+              שיאים, אחוזי תפיסה והשוואה בין הסבבים
             </p>
           </Link>
 
@@ -356,15 +380,15 @@ export default function LeaguePortalPage() {
         <div className="space-y-4">
           {league.dates.map((d) => (
             <div key={d._id} className="ds-card p-5">
-              <div className="mb-3 flex items-center gap-2 font-extrabold">
+              {/* The date is its own level of the tree (/l/:slug/:date). */}
+              <Link
+                href={leagueDatePath(league.slug, d.date)}
+                className="mb-3 flex items-center gap-2 font-extrabold hover:text-accent"
+              >
                 <CalendarDays className="h-5 w-5 text-accent" />
-                {d.label?.trim() ||
-                  new Date(d.date).toLocaleDateString("he-IL", {
-                    day: "numeric",
-                    month: "long",
-                    year: "numeric",
-                  })}
-              </div>
+                {dateLabel(d)}
+                <ChevronRight className="h-4 w-4 rotate-180 opacity-50" />
+              </Link>
               <div className="grid gap-2 sm:grid-cols-2">
                 {Array.from({ length: d.roundsCount }, (_, k) => k + 1).map(
                   (roundIndex) => {
@@ -380,7 +404,7 @@ export default function LeaguePortalPage() {
                           {ev ? (
                             <>
                               <Link
-                                href={`/c/${ev.slug}/live`}
+                                href={`${leagueRoundPath(league.slug, d.date, roundIndex)}/live`}
                                 className="rounded-xl border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-muted hover:border-accent/40 hover:text-ink"
                               >
                                 <Trophy className="ml-1 inline h-3.5 w-3.5" />
@@ -388,7 +412,7 @@ export default function LeaguePortalPage() {
                               </Link>
                               {isManager && (
                                 <Link
-                                  href={`/c/${ev.slug}/judge`}
+                                  href={`${leagueRoundPath(league.slug, d.date, roundIndex)}/judge`}
                                   className="rounded-xl border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-muted hover:border-accent/40 hover:text-ink"
                                 >
                                   <Gavel className="ml-1 inline h-3.5 w-3.5" />

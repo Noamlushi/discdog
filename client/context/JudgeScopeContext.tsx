@@ -13,6 +13,12 @@ interface JudgeScopeValue {
   basePath: string;
   /** The competition (or league round) being judged. */
   event: EventDto;
+  /**
+   * Where "up" is from the judging screen — the league for a round, the
+   * competition portal otherwise. The judge shell renders it as the first
+   * bottom-nav item so judging is never a dead end.
+   */
+  up?: { href: string; label: string };
 }
 
 const JudgeScopeContext = createContext<JudgeScopeValue | null>(null);
@@ -20,10 +26,12 @@ const JudgeScopeContext = createContext<JudgeScopeValue | null>(null);
 export function JudgeScopeProvider({
   basePath,
   event,
+  up,
   children,
 }: {
   basePath: string;
   event: EventDto;
+  up?: { href: string; label: string };
   children: ReactNode;
 }) {
   const { eventId, setEventId, setPitch } = useJudgeSession();
@@ -39,7 +47,7 @@ export function JudgeScopeProvider({
   }, [event._id]);
 
   return (
-    <JudgeScopeContext.Provider value={{ basePath, event }}>
+    <JudgeScopeContext.Provider value={{ basePath, event, up }}>
       {children}
     </JudgeScopeContext.Provider>
   );

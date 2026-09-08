@@ -6,10 +6,11 @@ import { requireRole } from "../middleware/requireRole";
 import { requireLeagueManager } from "../middleware/requireManager";
 import { Discipline, ExperienceLevel, UserRole } from "../types";
 import { League, Registration, User, Dog, Event, Match, ActionLog } from "../models";
-import { uniqueSlug } from "../services/slug";
+import { uniqueSlug, normalizeSlug } from "../services/slug";
 import { importRoster } from "../services/roster-import.service";
 import { generateLeagueRound } from "../services/league-round.service";
 import { computeLeagueStandings } from "../services/league-standings.service";
+import { computeLeagueSummary } from "../services/league-summary.service";
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
@@ -84,6 +85,22 @@ router.get("/:id/standings", async (req, res, next) => {
   }
 });
 
+// GET /api/leagues/:id/summary — league-wide run statistics across every round
+// (public read). Standings say who is winning; this says how the league ran.
+router.get("/:id/summary", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid league id" });
+    }
+    const summary = await computeLeagueSummary(id);
+    if (!summary) return res.status(404).json({ error: "League not found" });
+    res.json(summary);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/leagues/:id — single league detail (public read).
 router.get("/:id", async (req, res, next) => {
   try {
@@ -106,16 +123,31 @@ router.post(
   requireRole(UserRole.Admin),
   async (req, res, next) => {
     try {
-      const { name, dates, scoring, experienceLevels, minRestTimeMinutes, activePitches, organizerIds } =
+      const { name, slug, dates, scoring, experienceLevels, minRestTimeMinutes, activePitches, organizerIds } =
         req.body ?? {};
       if (!name) return res.status(400).json({ error: "name is required" });
 
       const mode = scoring?.mode === "sum" ? "sum" : "bestOf";
       const bestN = Math.max(1, Number(scoring?.bestN) || 3);
 
+      // The league slug is the root of its round tree (/l/:slug/:date/:round),
+      // so the organizer may choose it; we fall back to the random one.
+      let chosenSlug: string | null = null;
+      if (slug !== undefined && String(slug).trim() !== "") {
+        chosenSlug = normalizeSlug(slug);
+        if (!chosenSlug) {
+          return res.status(400).json({
+            error: "slug must be 2-60 characters of letters, digits or dashes",
+          });
+        }
+        if (await League.exists({ slug: chosenSlug })) {
+          return res.status(409).json({ error: "slug is already taken" });
+        }
+      }
+
       const league = await League.create({
         name,
-        slug: await uniqueSlug(League, name),
+        slug: chosenSlug ?? (await uniqueSlug(League, name)),
         ownerId: req.user!.sub,
         organizerIds: sanitizeIds(organizerIds),
         categoryId: Discipline.Distance,
@@ -143,9 +175,27 @@ router.patch(
       const league = await League.findById(req.params.id);
       if (!league) return res.status(404).json({ error: "League not found" });
 
-      const { name, dates, scoring, experienceLevels, minRestTimeMinutes, activePitches } =
+      const { name, slug, dates, scoring, experienceLevels, minRestTimeMinutes, activePitches } =
         req.body ?? {};
       if (typeof name === "string" && name.trim()) league.name = name.trim();
+
+      // Renaming the slug moves the whole round tree; old /l/:slug links break,
+      // which is why it is an explicit action rather than a side effect of a
+      // name change.
+      if (slug !== undefined) {
+        const next = normalizeSlug(slug);
+        if (!next) {
+          return res.status(400).json({
+            error: "slug must be 2-60 characters of letters, digits or dashes",
+          });
+        }
+        if (next !== league.slug) {
+          if (await League.exists({ slug: next })) {
+            return res.status(409).json({ error: "slug is already taken" });
+          }
+          league.slug = next;
+        }
+      }
       if (dates !== undefined) league.dates.splice(0, league.dates.length, ...sanitizeDates(dates));
       if (experienceLevels !== undefined) league.experienceLevels = sanitizeLevels(experienceLevels);
       if (scoring !== undefined) {

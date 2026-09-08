@@ -113,6 +113,66 @@ export interface LeagueStandingsResponse {
   levels: Record<ExperienceLevel, LeagueTeamStanding[]>;
 }
 
+/** GET /leagues/:id/summary — league-wide run statistics (league-summary.service.ts). */
+export interface LeagueSummaryLeader {
+  player: string | null;
+  dog: string | null;
+  value: number;
+  display: string;
+  detail?: string;
+}
+
+export interface LeagueSummaryRound {
+  key: string;
+  label: string;
+  seq: number;
+  teams: number;
+  average: number;
+  averageDisplay: string;
+  best: number | null;
+  bestDisplay: string | null;
+  bestTeam: string | null;
+}
+
+export interface LeagueSummaryResponse {
+  leagueId: string;
+  name: string;
+  generatedAt: string;
+  hasData: boolean;
+  overview: {
+    dates: number;
+    roundsConfigured: number;
+    roundsRun: number;
+    teams: number;
+    heats: number;
+    throws: number;
+    catches: number;
+    misses: number;
+    catchRate: number;
+    averageScore: number;
+    averageScoreDisplay: string;
+  };
+  rounds: LeagueSummaryRound[];
+  records: {
+    topScores: LeagueSummaryLeader[];
+    bestThrow: LeagueSummaryLeader | null;
+    mostConsistent: LeagueSummaryLeader | null;
+    biggestImprovement: LeagueSummaryLeader | null;
+    perLevelTop: { level: string; row: LeagueSummaryLeader | null }[];
+  };
+  catching: {
+    bestRate: LeagueSummaryLeader[];
+    perRound: { key: string; label: string; catchRate: number }[];
+  };
+  zones: {
+    counts: { zone: number; label: string; throws: number; share: number }[];
+    jumpBonuses: number;
+    zoneBonuses: number;
+    farThrows: number;
+    farShare: number;
+  };
+}
+
 /** A populated User/Dog reference (or a bare id string before population). */
 export type NamedRef = { _id?: string; name?: string } | string | null;
 

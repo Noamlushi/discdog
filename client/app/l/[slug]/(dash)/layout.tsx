@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { Gavel, ListOrdered, Radio } from "lucide-react";
+import { Gavel, ListOrdered, Radio, Undo2 } from "lucide-react";
 import { getLeagueBySlug } from "../../../../lib/api";
 import type { LeagueDto } from "../../../../lib/types";
 import { useAuth } from "../../../../context/AuthContext";
@@ -47,6 +47,7 @@ export default function LeagueDashLayout({
   }
 
   const nav: ScopedNavItem[] = [
+    { href: `/l/${slug}`, label: "הליגה", icon: Undo2 },
     { href: `/l/${slug}/standings`, label: "טבלת ליגה", icon: ListOrdered },
     { href: `/l/${slug}/live`, label: "לייב", icon: Radio },
     // Managers can jump to judging the league's active round; the scoped

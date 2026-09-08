@@ -8,6 +8,7 @@ import { RequireAuth } from "../../../../components/auth/RequireAuth";
 import { JudgeSessionProvider } from "../../../../context/JudgeSessionContext";
 import { JudgeScopeProvider } from "../../../../context/JudgeScopeContext";
 import { JudgeShell } from "../../../../components/judge/JudgeShell";
+import { useLeagueRoundRedirect } from "../../../../lib/useLeagueRoundRedirect";
 
 // Scoped competition judging (/c/:slug/judge/{,scoring,log}). Resolves the event
 // by slug and locks the judge session to it — no competition picker. Auth-gated
@@ -28,9 +29,12 @@ export default function CompetitionJudgeLayout({
       .finally(() => setLoading(false));
   }, [slug]);
 
+  // League rounds live in the league tree now; this URL forwards there.
+  const redirecting = useLeagueRoundRedirect(event, slug);
+
   return (
     <RequireAuth roles={["Admin", "Organizer", "Judge"]}>
-      {loading ? (
+      {loading || redirecting ? (
         <div dir="rtl" className="grid min-h-screen place-items-center text-muted">
           טוען…
         </div>
@@ -40,7 +44,11 @@ export default function CompetitionJudgeLayout({
         </div>
       ) : (
         <JudgeSessionProvider>
-          <JudgeScopeProvider basePath={`/c/${slug}/judge`} event={event}>
+          <JudgeScopeProvider
+            basePath={`/c/${slug}/judge`}
+            event={event}
+            up={{ href: `/c/${slug}`, label: "התחרות" }}
+          >
             <JudgeShell>{children}</JudgeShell>
           </JudgeScopeProvider>
         </JudgeSessionProvider>
